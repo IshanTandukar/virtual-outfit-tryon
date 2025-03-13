@@ -86,7 +86,7 @@ def get_palette(num_cls):
 
 def parsing(human_image):
     args = get_arguments()
-    print("MILAN GAY", args)
+    print(args)
     # root = "input/00009_00.jpg"
     gpus = [int(i) for i in args.gpu.split(',')]
     assert len(gpus) == 1
@@ -153,7 +153,7 @@ def parsing(human_image):
 
 
             output_img_rgb = output_img.convert('RGB')
-            # output_img_rgb.save("mismatched_colour_rgb.png")
+            output_img_rgb.save("mismatched_colour_rgb.png")
 
             # input_ko_path = "humanparsing/mismatched_colour_rgb.png"
 
@@ -191,6 +191,18 @@ def parsing(human_image):
             #     exit()
 
             # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            lower_bound = np.array([90, 90, 90], dtype=np.uint8)  # Example lower RGB bound
+            upper_bound = np.array([160, 160, 160], dtype=np.uint8)  # Example upper RGB bound
+
+            # Create a mask
+            mask = cv2.inRange(image, lower_bound, upper_bound)
+
+            # Create a blue image with the same shape as the original
+            blue_color = np.full(image.shape, (254, 85, 0), dtype=np.uint8)
+
+            # Replace the masked region with blue
+            image[mask > 0] = blue_color[mask > 0]
+
 
             # Define the RGB range for masking
             lower_bound = np.array([100, 90, 0], dtype=np.uint8)  # Example lower RGB bound

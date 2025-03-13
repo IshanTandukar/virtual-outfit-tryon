@@ -28,7 +28,23 @@ def load_data(openpose_img, openpose_json, image_parse,cloth, cloth_mask,human_i
 
     #load parsing image
     # parse = Image.open(image_parse)
+    if human_image.mode == "RGBA":
+        # Convert to RGB
+        human_image = human_image.convert("RGB")
+    img = transforms.Resize((1024, 768), interpolation=2)(human_image)
+    copy_human_image = img.copy()
+    print("KXAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
     parse = image_parse.convert("P")
+    print("GGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGGgg")
+
+    original_np = np.array(copy_human_image)
+    parse_np = np.array(parse)
+    mask = (parse_np == 0)
+    original_np[mask] = [250, 250, 250]
+    result = Image.fromarray(original_np)
+    img = result
+    result.save("modified_image.png")
+
     print("lllllllllllllllllllllllllllllllllllllllll")
     parse = transforms.Resize((1024, 768), interpolation=Image.NEAREST)(parse)
     # parse = transforms.Resize(768, interpolation=0)(parse)
@@ -63,7 +79,8 @@ def load_data(openpose_img, openpose_json, image_parse,cloth, cloth_mask,human_i
 
     #load person image
     # img = Image.open(image)
-    img = transforms.Resize(768, interpolation=2)(human_image)
+    # img = transforms.Resize((1024, 768), interpolation=2)(result)
+    # img = transforms.Resize((1024, 768), interpolation=2)(human_image)
     img_agnostic = get_img_agnostic(img, parse, pose_data)
     img = transform(img)
     img_agnostic = transform(img_agnostic) #ishan le banda gareko white background image lai use garna

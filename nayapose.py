@@ -39,54 +39,57 @@ def get_pose_key_and_json(image):
             keypoints = output[0]['keypoints'][0, :, :2].cpu().numpy()  # Extract (x, y) keypoints
             return np.expand_dims(keypoints, axis=0)  # Shape (1, N, 2)
 
-        def draw_skeleton_on_image(image, keypoints, skeleton):
-            """
-            Draws the keypoints and skeleton connections directly on the input image.
 
-            Args:
-                image_path (str): Path to the image.
-                keypoints (ndarray): Detected keypoints of shape (1, N, 2).
-                skeleton (list of tuple): Connections between keypoints.
-            """
-            # image = cv2.imread(image_path)
-            image = cv2.resize(image, (768, 1024))
-            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)  # Convert for proper display
+        def blend_transparent(background, overlay, alpha=0.5):
+            """Blends overlay on background with given transparency"""
+            return cv2.addWeighted(overlay, alpha, background, 1 - alpha, 0)
 
-            height, width = image.shape[:2]
-            visualization = np.zeros((height, width, 3), dtype=np.uint8)
+        def get_perpendicular_offset(point1, point2, thickness):
+            """Returns perpendicular vector scaled to given thickness"""
+            dx = point2[0] - point1[0]
+            dy = point2[1] - point1[1]
+            length = np.hypot(dx, dy)
+            if length == 0:
+                return (0, 0)
+            offset_x = -dy * (thickness / length) // 2
+            offset_y = dx * (thickness / length) // 2
+            return int(offset_x), int(offset_y)
 
-            colors = [
-                (255, 105, 180), (128, 0, 128), (75, 0, 130), (255, 192, 203),  # Face (Red)
-                (155, 28, 49), (255, 255, 255), (255, 255, 255),  # Upper torso (Blue)
-                (0, 255, 0), (0, 255, 0),  # Left hand (Green)
-                (0, 255, 0), (0, 255, 0),  # Right hand (Yellow)
-                (255, 182, 193),  # Middle part (Cyan)
-                (0, 0, 200),(0, 255, 0)  # Bottom part (Magenta)
-            ]
+        def draw_tapered_line(canvas, prev_point, keypoint, color, thickness_start=5, thickness_middle=12):
+            """Draws a tapered line from prev_point to keypoint."""
+            overlay = canvas.copy()  # Create overlay for transparency
 
-            for idx, (i, j) in enumerate(skeleton_connections):
-                if i < len(keypoints[0]) and j < len(keypoints[0]):
-                    x1, y1 = int(keypoints[0][i][0]), int(keypoints[0][i][1])
-                    x2, y2 = int(keypoints[0][j][0]), int(keypoints[0][j][1])
-                    cv2.line(visualization, (x1, y1), (x2, y2), colors[idx], 8)
+            # Compute the middle point
+            mid_x = (prev_point[0] + keypoint[0]) // 2
+            mid_y = (prev_point[1] + keypoint[1]) // 2
+            mid_point = (mid_x, mid_y)
+
+            # Get offsets for width control
+            offset_start = get_perpendicular_offset(prev_point, mid_point, thickness_start)
+            offset_mid = get_perpendicular_offset(prev_point, mid_point, thickness_middle)
+            offset_end = get_perpendicular_offset(mid_point, keypoint, thickness_start)
+
+            # Define polygon points for tapered effect
+            points = np.array([
+                (prev_point[0] + offset_start[0], prev_point[1] + offset_start[1]),
+                (mid_point[0] + offset_mid[0], mid_point[1] + offset_mid[1]),
+                (keypoint[0] + offset_end[0], keypoint[1] + offset_end[1]),
+                (keypoint[0] - offset_end[0], keypoint[1] - offset_end[1]),
+                (mid_point[0] - offset_mid[0], mid_point[1] - offset_mid[1]),
+                (prev_point[0] - offset_start[0], prev_point[1] - offset_start[1])
+            ], dtype=np.int32)
+
+            # Draw the tapered shape
+            cv2.fillPoly(canvas, [points], color)
+
+            # Draw transparent circles for keypoints
+            cv2.circle(overlay, prev_point, 7, color, -1)  # Start keypoint
+            cv2.circle(overlay, keypoint, 7, color, -1)  # End keypoint
+
+            # Blend the overlay with transparency
+            canvas[:] = blend_transparent(canvas, overlay, alpha=0.5)
 
 
-            for i, keypoint in enumerate(keypoints[0]):  # Access keypoints for the person
-                x, y = int(keypoint[0]), int(keypoint[1])  # Unpack x, y from keypoint
-                cv2.circle(visualization, (x, y), 10, (0, 0, 255), -1)  # Draw keypoint in red
-                # cv2.putText(visualization, str(i), (int(x), int(y)),  # Label keypoint, convert x and y to integers
-                            # cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 10, cv2.LINE_AA)
-
-            return visualization
-
-
-        def filter_skeleton_connections(keypoints, skeleton_connections):
-            """ Removes edges if a keypoint is (0,0). """
-            valid_edges = []
-            for i, j in skeleton_connections:
-                if not np.array_equal(keypoints[0, i], [0, 0]) and not np.array_equal(keypoints[0, j], [0, 0]):
-                    valid_edges.append((i, j))
-            return valid_edges
 
         # COCO 17-keypoint skeleton structure
         skeleton_connections = [
@@ -109,6 +112,7 @@ def get_pose_key_and_json(image):
         # Load and process the image
         # human_image_path = image_path_human_image
         preprocessed_image = preprocess_image(image)
+        
         pose_keypoints = detect_pose_keypoints(preprocessed_image)
 
 
@@ -127,9 +131,50 @@ def get_pose_key_and_json(image):
         pose_keypoints_new = pose_keypoints[:, :15, :]
 
         pose_keypoints = pose_keypoints_new
+        copy_keypoints = pose_keypoints
+        converted_keypoints = [(int(x), int(y)) for x, y in copy_keypoints[0]]
 
-        filtered_edges = filter_skeleton_connections(pose_keypoints, skeleton_connections)
-        output_image = draw_skeleton_on_image(image, pose_keypoints, filtered_edges)
+        print("IMAGE SHAPEDJ KDJDJFDJ",image.shape)
+        
+        canvas_size = (1024,768,3)
+        canvas = np.zeros(canvas_size, dtype=np.uint8)
+
+        # colors = [(119, 0, 156),(165, 0, 102),(169, 0, 155),(76, 0, 157),(163, 0, 47),(76, 168, 0),(160, 36, 0),(155, 106, 0),(145, 165, 0),(0, 169, 0),(0, 169, 0),(162, 0, 0),(6, 93, 156),(0, 168, 43)]
+        colors = [(156, 0, 119),(102, 0, 165),(155, 0, 169),(157, 0, 76),(47, 0, 163),(0, 168, 76),(0, 36, 160),(0, 106, 155),(0, 165, 145),(0, 169, 0),(0, 169, 0),(0, 0, 162),(156, 93, 6),(43, 168, 0)]
+
+        for i, (start, end) in enumerate(skeleton_connections):
+            if start < len(converted_keypoints) and end < len(converted_keypoints):
+                color = colors[i % len(colors)]  # Cycle through colors
+                draw_tapered_line(canvas, converted_keypoints[start], converted_keypoints[end], color)
+                # mid_x = (converted_keypoints[start][0] + converted_keypoints[end][0]) // 2
+                # mid_y = (converted_keypoints[start][1] + converted_keypoints[end][1]) // 2
+
+                # # Draw index number at midpoint
+                # cv2.putText(canvas, str(i+1), (mid_x, mid_y),
+                #             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
+
+        # Display the result
+        imageko = Image.fromarray(cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB))
+        img_np = np.array(imageko)
+
+
+        hsv = cv2.cvtColor(img_np, cv2.COLOR_BGR2HSV)
+        lower_black = np.array([0, 0, 0], dtype=np.uint8)
+        upper_black = np.array([50, 50, 50], dtype=np.uint8)  # Adjust this threshold if needed
+        mask = cv2.inRange(hsv, lower_black, upper_black)
+
+        # Increase brightness for non-black pixels
+        increase_value = 50  # Adjust as needed
+        hsv[:, :, 2] = np.clip(hsv[:, :, 2] + increase_value, 0, 255)
+
+        # Apply the mask back to keep background black
+        hsv[:, :, 2][mask > 0] = 0  # Set background brightness to zero (black)
+
+        # Convert back to BGR
+        bright_imgb = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+        cv2.imwrite("brightened_image_path_black.png", bright_imgb)
+        # cv2_imshow(bright_imgb)
+        output_image = Image.fromarray(cv2.cvtColor(bright_imgb, cv2.COLOR_BGR2RGB))
 
         arr = np.array(pose_keypoints)
         flat_list = arr.flatten().tolist()
@@ -256,7 +301,7 @@ def get_pose_key_and_json(image):
         }
         # output_image = np.array(output_image)
         # output_image = cv2.cvtColor(output_image, cv2.COLOR_BGR2RGB)
-        output_image = Image.fromarray(output_image)
+        # output_image = Image.fromarray(output_image)
 
         # Write the JSON data to a file
         json_data = json.dumps(data, indent=2)
@@ -265,4 +310,3 @@ def get_pose_key_and_json(image):
         output_image.save("output_image.png")
 
         return output_image,data
-

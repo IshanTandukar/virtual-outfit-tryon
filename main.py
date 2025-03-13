@@ -13,8 +13,9 @@ from cloth_mask_model import predic
 print(1)
 from simple_extractor import parsing
 print(2)
-from pose import get_pose_key_and_json
+from nayapose import get_pose_key_and_json
 import numpy as np
+
 
 app = FastAPI()
 
@@ -144,6 +145,7 @@ async def virtual_tryon(
         )
         
         parse, pose_rgb = segmentation_generation(opt, new_parse_agnostic_map, pose_rgb, seg, cm, c)
+
         warped_c, warped_cm = clothes_deformation(img_agnostic, parse, pose_rgb, gmm, cm, c)
         im = try_on_synthesis(parse, pose_rgb, warped_c, img_agnostic, alias, warped_cm)
 
